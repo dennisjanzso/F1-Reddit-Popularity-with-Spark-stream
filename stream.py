@@ -3,6 +3,7 @@ from pyspark import SparkConf,SparkContext
 from pyspark.sql import Row,SQLContext
 import psutil
 import sys
+import requests
 
 dictionary = {'hamilton': 'HAM', 'ham': 'HAM', 'lewis': 'HAM',
             'bottas': 'BOT', 'bot': 'BOT', 'valtteri': 'BOT',
@@ -39,6 +40,13 @@ ssc.checkpoint("checkpoint_F1App")
 
 dataStream = ssc.socketTextStream("localhost",9009)
 
+def send_data_to_app(df):
+    drivers = [str(t.driver) for t in df.select("driver").collect()]
+    d_count = [p.driver_count for p in df.select("driver_count").collect()]
+    data = {'driver': str(drivers), 'count': str(d_count)}
+    print(data)
+    response = requests.post('http://127.0.0.1:8080/update-driver-mentions', data=data)
+
 def aggregate_words_count(new_values, total_sum):
         	return sum(new_values) + (total_sum or 0)
 
@@ -54,7 +62,7 @@ def process_rdd(time, rdd):
         words_df = sql_context.createDataFrame(row_rdd)
         words_df.registerTempTable("drivers")
         words_counts_df = sql_context.sql("select driver, driver_count from drivers order by driver_count desc limit 20")
-        words_counts_df.show()
+        send_data_to_app(words_counts_df)
     except Exception as e:
         print(e)
         er = sys.exc_info()[0]
